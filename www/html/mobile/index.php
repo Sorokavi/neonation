@@ -1,5 +1,5 @@
 <?php
-    session_start();
+    require_once __DIR__ . '/../session_init.php';
     
     require_once __DIR__ . '/../Parsedown.php';
     $log = __DIR__ . '/../../environments/guestbook.txt';
@@ -14,6 +14,9 @@
     }
 
     if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['guestbook_submit'], $_SESSION['discord_user'])) {
+        if (!isset($_POST['csrf_token']) || !hash_equals($_SESSION['csrf_token'] ?? '', (string)$_POST['csrf_token'])) {
+            $entryError = 'Invalid CSRF token.';
+        } else {
         $entry = trim($_POST['guestbook_entry']);
         if ($entry === '' || preg_match('/^\s*$/', str_replace(["\r", "\n"], '', $entry))) {
             $entryError = 'Entry cannot be empty or only whitespace!';
@@ -37,6 +40,7 @@
             }
             $entryError = 'Could not write to the guestbook.';
         }
+        }
     }
 
     $entrySuccess = '';
@@ -46,9 +50,11 @@
     }
     
     if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['signout'])) {
-        session_destroy();
-        header('Location: /mobile/');
-        exit;
+        if (isset($_POST['csrf_token']) && hash_equals($_SESSION['csrf_token'] ?? '', (string)$_POST['csrf_token'])) {
+            session_destroy();
+            header('Location: /mobile/');
+            exit;
+        }
     }
     ?>
 <!DOCTYPE html>
@@ -301,6 +307,7 @@
             <span style="font-size: 1em; word-break: break-word;">Welcome back, <?php echo $_SESSION['discord_user']['username']; ?>!</span>
             <form method="post" action="" style="width: 100%; max-width: 300px;">
                 <input type="hidden" name="signout" value="1">
+                <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($_SESSION['csrf_token']); ?>">
                 <button type="submit" class="signout-button">Sign out</button>
             </form>
         </div>
@@ -447,6 +454,7 @@
         </div>
         <?php if (isset($_SESSION['discord_user'])): ?>
         <form method="post" action="" style="max-width: 100vw; margin: 2em auto; background: #181818; border: 1px solid #39FF14; padding: 1em;">
+            <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($_SESSION['csrf_token']); ?>">
             <input type="hidden" name="guestbook_submit" value="1">
             <label for="guestbook_entry" style="display: block; margin-bottom: 0.5em;">Sign the Guestbook:</label>
             <p style="font-size: 0.9em;">Signed in as <strong><?php echo $_SESSION['discord_user']['username']; ?></strong></p>

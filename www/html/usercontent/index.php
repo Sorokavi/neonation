@@ -10,8 +10,8 @@ $uploadsReal  = realpath($uploadsDir) ?: $uploadsDir;
 
 // 2) Define any globals (guild ID, maxFileSize, allowedExtensions)
 $allowedGuildId = env('NEO_GUILD_ID');
-// Limit uploads to 50 MB
-$maxFileSize = 50 * 1024 * 1024;
+// Limit uploads to 10 MB
+$maxFileSize = 10 * 1024 * 1024;
 $allowedExtensions = [
     'png','jpg','jpeg','gif',
     'mp4','mov','webm','ogg','avi','mkv',
@@ -216,7 +216,7 @@ if ($isLoggedIn && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['upload
     if (! in_array($ext, $allowedExtensions, true)) {
             $uploadError = 'Invalid file type. Allowed: ' . implode(', ', $allowedExtensions);
     } elseif ($file['size'] > $maxFileSize) {
-      $uploadError = 'File is too large (max 50 MB).';
+      $uploadError = 'File is too large (max 10 MB).';
     } else {
       // Verify MIME type using finfo
       $finfo = new finfo(FILEINFO_MIME_TYPE);
