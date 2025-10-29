@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/../session_init.php';
 require_once '../load-env.php';
+require_once __DIR__ . '/../error_template.php';
 
 // 1) Define the uploads directory & manifest path
 $uploadsDir   = __DIR__ . '/uploads/';
@@ -77,12 +78,15 @@ if ($isLoggedIn) {
             break;
         }
     }
-    if (! $inServer) {
-        die(
-            '<h1 style="color:red; text-align:center;">403 Forbidden</h1>' .
-            '<p style="text-align:center; color:#39FF14;">You must be a member of the Neo Nation Discord server to access this page.</p>'
-        );
-    }
+  if (! $inServer) {
+    render_error_page(
+      'Neo Nation – 403 Forbidden',
+      'Access Denied',
+      'You must be a member of the Neo Nation Discord server to access this page.',
+      403
+    );
+    exit;
+  }
 
     $currentUserId   = $_SESSION['discord_user']['id'];
     $currentUsername = $_SESSION['discord_user']['username'];

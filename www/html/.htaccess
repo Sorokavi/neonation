@@ -1,0 +1,9 @@
+ErrorDocument 404 /404.php
+ErrorDocument 403 /403.php
+ErrorDocument 500 /500.php
+
+# Optional: prevent PHP execution in uploads (if using Apache and this path is aliased under document root)
+#<Directory "/var/www/html/usercontent/uploads">
+#  php_admin_flag engine off
+#  RemoveHandler .php .phtml .php3 .php4 .php5 .php7 .php8
+#</Directory>

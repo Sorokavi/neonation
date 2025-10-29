@@ -30,8 +30,21 @@ set_exception_handler(function ($ex) use ($debugEnabled) {
         http_response_code(500);
         header('Content-Type: text/html; charset=UTF-8');
     }
-    echo $debugEnabled ? '<pre>' . htmlspecialchars((string)$ex, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</pre>'
-                       : '<h1>Unexpected error</h1><p>Something went wrong. Please try again later.</p>';
+    if ($debugEnabled) {
+        echo '<pre>' . htmlspecialchars((string)$ex, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</pre>';
+    } else {
+        $tpl = __DIR__ . '/error_template.php';
+        if (is_file($tpl)) {
+            require_once $tpl;
+            if (function_exists('render_error_page')) {
+                render_error_page('Neo Nation – Error', 'Unexpected Error', 'Something went wrong. Please try again later.', 500);
+            } else {
+                echo '<h1>Unexpected error</h1><p>Something went wrong. Please try again later.</p>';
+            }
+        } else {
+            echo '<h1>Unexpected error</h1><p>Something went wrong. Please try again later.</p>';
+        }
+    }
     exit;
 });
 
