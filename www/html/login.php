@@ -1,8 +1,8 @@
 <?php
 require_once 'load-env.php';
 
-$client_id = $_ENV['DISCORD_CLIENT_ID'];
-$redirect_uri = $_ENV['DISCORD_REDIRECT_URI'];
+$client_id = env('DISCORD_CLIENT_ID');
+$redirect_uri = env('DISCORD_REDIRECT_URI');
 $scope = 'identify guilds';
 
 header('Location: https://discord.com/api/oauth2/authorize?' . http_build_query([

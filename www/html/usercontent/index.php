@@ -1,20 +1,47 @@
 <?php
-session_start();
-
+require_once __DIR__ . '/../session_init.php';
 require_once '../load-env.php';
 
 // 1) Define the uploads directory & manifest path
 $uploadsDir   = __DIR__ . '/uploads/';
 $manifestPath = $uploadsDir . 'uploads.json';
+// Resolve and normalize uploads directory for safety checks
+$uploadsReal  = realpath($uploadsDir) ?: $uploadsDir;
 
 // 2) Define any globals (guild ID, maxFileSize, allowedExtensions)
-$allowedGuildId = $_ENV['NEO_GUILD_ID'];
-$maxFileSize = 1000 * 1024 * 1024;
+$allowedGuildId = env('NEO_GUILD_ID');
+// Limit uploads to 50 MB
+$maxFileSize = 50 * 1024 * 1024;
 $allowedExtensions = [
     'png','jpg','jpeg','gif',
     'mp4','mov','webm','ogg','avi','mkv',
     'mp3','wav','flac','flv','m4v',
     'pdf','txt','doc','docx','ppt','pptx'
+];
+
+// Map allowed extensions to expected MIME prefixes or explicit types
+$allowedMimeMap = [
+  'png'  => ['image/png'],
+  'jpg'  => ['image/jpeg'],
+  'jpeg' => ['image/jpeg'],
+  'gif'  => ['image/gif'],
+  'mp4'  => ['video/mp4'],
+  'mov'  => ['video/quicktime'],
+  'webm' => ['video/webm'],
+  'ogg'  => ['video/ogg','audio/ogg','application/ogg'],
+  'avi'  => ['video/x-msvideo', 'video/avi'],
+  'mkv'  => ['video/x-matroska','video/webm'],
+  'mp3'  => ['audio/mpeg'],
+  'wav'  => ['audio/wav','audio/x-wav'],
+  'flac' => ['audio/flac','audio/x-flac'],
+  'flv'  => ['video/x-flv'],
+  'm4v'  => ['video/x-m4v','video/mp4'],
+  'pdf'  => ['application/pdf'],
+  'txt'  => ['text/plain'],
+  'doc'  => ['application/msword'],
+  'docx' => ['application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
+  'ppt'  => ['application/vnd.ms-powerpoint'],
+  'pptx' => ['application/vnd.openxmlformats-officedocument.presentationml.presentation'],
 ];
 
 // 3) Define helper functions
@@ -65,6 +92,10 @@ if ($isLoggedIn) {
 $deleteError   = '';
 $deleteSuccess = '';
 if ($isLoggedIn && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_file'])) {
+  if (!csrf_check_post()) {
+    http_response_code(400);
+    $deleteError = 'Invalid CSRF token.';
+  } else {
     $toDelete = basename($_POST['delete_file']);
     if ($toDelete === '') {
         $deleteError = 'Invalid filename.';
@@ -81,21 +112,27 @@ if ($isLoggedIn && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete
 
         if ($foundIndex === null) {
             $deleteError = 'File not found or you do not have permission to delete it.';
-        } else {
-            $filePath = $uploadsDir . $toDelete;
-            if (file_exists($filePath) && is_file($filePath)) {
-                unlink($filePath);
-            }
-            array_splice($manifest, $foundIndex, 1);
-            save_manifest($manifestPath, $manifest);
-            $deleteSuccess = "Successfully deleted \"{$toDelete}\".";
-        }
+    } else {
+      $filePath = $uploadsDir . $toDelete;
+      $real     = realpath($filePath);
+      if ($real !== false && str_starts_with($real, $uploadsReal) && is_file($real)) {
+        @unlink($real);
+      }
+      array_splice($manifest, $foundIndex, 1);
+      save_manifest($manifestPath, $manifest);
+      $deleteSuccess = "Successfully deleted \"{$toDelete}\".";
     }
+    }
+  }
 }
 
 $renameError   = '';
 $renameSuccess = '';
 if ($isLoggedIn && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['rename_file'])) {
+  if (!csrf_check_post()) {
+    http_response_code(400);
+    $renameError = 'Invalid CSRF token.';
+  } else {
     $oldFileName = basename($_POST['rename_file']);
     $newDisplayName = trim($_POST['new_display_name'] ?? '');
     
@@ -122,7 +159,7 @@ if ($isLoggedIn && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['rename
         }
         if ($duplicate || file_exists($newFilePath)) {
             $renameError = 'A file with that name already exists.';
-        } else {
+    } else {
             // Find the entry to rename
             $foundIndex = null;
             foreach ($manifest as $idx => $entry) {
@@ -134,10 +171,11 @@ if ($isLoggedIn && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['rename
             if ($foundIndex === null) {
                 $renameError = 'File not found or you do not have permission to rename it.';
             } else {
-                $oldFilePath = $uploadsDir . $oldFileName;
+        $oldFilePath = $uploadsDir . $oldFileName;
+        $oldReal     = realpath($oldFilePath);
                 // Rename the physical file
-                if (file_exists($oldFilePath) && is_file($oldFilePath)) {
-                    if (rename($oldFilePath, $newFilePath)) {
+        if ($oldReal !== false && str_starts_with($oldReal, $uploadsReal) && is_file($oldReal)) {
+          if (rename($oldReal, $newFilePath)) {
                         // Update the manifest
                         $manifest[$foundIndex]['file'] = $newFileName;
                         $manifest[$foundIndex]['timestamp'] = time(); // Update timestamp for rename
@@ -145,7 +183,7 @@ if ($isLoggedIn && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['rename
                             $renameSuccess = "Successfully renamed to \"{$newFileName}\".";
                         } else {
                             // Rollback the file rename if manifest update fails
-                            rename($newFilePath, $oldFilePath);
+              @rename($newFilePath, $oldFilePath);
                             $renameError = 'Failed to update manifest. Rename rolled back.';
                         }
                     } else {
@@ -157,11 +195,16 @@ if ($isLoggedIn && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['rename
             }
         }
     }
+  }
 }
 
 $uploadError   = '';
 $uploadSuccess = '';
 if ($isLoggedIn && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['upload_submit'])) {
+  if (!csrf_check_post()) {
+    http_response_code(400);
+    $uploadError = 'Invalid CSRF token.';
+  } else {
     if (! isset($_FILES['userfile']) || $_FILES['userfile']['error'] !== UPLOAD_ERR_OK) {
         $uploadError = 'No file uploaded or upload error.';
     } else {
@@ -170,21 +213,36 @@ if ($isLoggedIn && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['upload
         $origName = basename($file['name']);
         $ext      = strtolower(pathinfo($origName, PATHINFO_EXTENSION));
 
-        if (! in_array($ext, $allowedExtensions, true)) {
+    if (! in_array($ext, $allowedExtensions, true)) {
             $uploadError = 'Invalid file type. Allowed: ' . implode(', ', $allowedExtensions);
-        }
-        elseif ($file['size'] > $maxFileSize) {
-            $uploadError = 'File is too large (max 10 MB).';
-        } else {
+    } elseif ($file['size'] > $maxFileSize) {
+      $uploadError = 'File is too large (max 50 MB).';
+    } else {
+      // Verify MIME type using finfo
+      $finfo = new finfo(FILEINFO_MIME_TYPE);
+      $mime  = $finfo->file($tmpPath) ?: '';
+      $allowedMimes = $allowedMimeMap[$ext] ?? [];
+      $mimeOk = false;
+      foreach ($allowedMimes as $am) {
+        if (strcasecmp($mime, $am) === 0) { $mimeOk = true; break; }
+      }
+      if (!$mimeOk) {
+        $uploadError = 'Upload rejected: MIME type not allowed.';
+      } else {
             $safeBase  = preg_replace('/[^A-Za-z0-9_\-]/', '_', pathinfo($origName, PATHINFO_FILENAME));
             $timestamp = time();
             $newName   = "{$safeBase}_{$currentUserId}_{$timestamp}.{$ext}";
             $targetPath = $uploadsDir . $newName;
 
-            if (! move_uploaded_file($tmpPath, $targetPath)) {
+      if (! move_uploaded_file($tmpPath, $targetPath)) {
                 $uploadError = 'Failed to move uploaded file.';
             } else {
-                chmod($targetPath, 0644);
+        $realTarget = realpath($targetPath) ?: $targetPath;
+        if (!str_starts_with($realTarget, $uploadsReal)) {
+          @unlink($realTarget);
+          $uploadError = 'Upload path validation failed.';
+        } else {
+        chmod($realTarget, 0644);
 
                 $manifest = load_manifest($manifestPath);
                 $manifest[] = [
@@ -193,17 +251,19 @@ if ($isLoggedIn && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['upload
                     'uploader_name' => $currentUsername,
                     'timestamp'     => $timestamp
                 ];
-                if (! save_manifest($manifestPath, $manifest)) {
-                    unlink($targetPath);
+        if (! save_manifest($manifestPath, $manifest)) {
+          @unlink($realTarget);
                     $uploadError = 'Could not update manifest.';
                 } else {
                     $publicUrl     = "https://cdn.neonation.net/uploads/{$newName}";
                     $uploadSuccess = "Upload successful! File is at:<br>
                                       <a href=\"{$publicUrl}\" target=\"_blank\">{$publicUrl}</a>";
                 }
+        }
             }
         }
     }
+  }
 }
 
 $allEntries = load_manifest($manifestPath);
@@ -503,6 +563,7 @@ $allEntries = load_manifest($manifestPath);
         <div class="message success"><?php echo $uploadSuccess; ?></div>
       <?php endif; ?>
       <form method="post" enctype="multipart/form-data">
+        <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($_SESSION['csrf_token']); ?>">
         <input type="file"
                name="userfile"
                accept=".png,.jpg,.jpeg,.gif,.mp4,.mov,.webm,.ogg,.avi,.mkv,.mp3,.wav,.flac,.pdf,.txt,.doc,.docx,.ppt,.pptx"
@@ -548,6 +609,7 @@ $allEntries = load_manifest($manifestPath);
               <!-- Rename Form -->
               <div class="rename-form" id="rename-form-<?php echo htmlspecialchars($fileName); ?>">
                 <form method="post" style="display:inline;">
+                  <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($_SESSION['csrf_token']); ?>">
                   <input type="hidden" name="rename_file" value="<?php echo htmlspecialchars($fileName); ?>">
                   <input type="text" name="new_display_name" placeholder="New filename" required>
                   <button type="submit">Rename</button>
@@ -565,6 +627,7 @@ $allEntries = load_manifest($manifestPath);
               &nbsp;|&nbsp;
               <form method="post" style="display:inline;"
                     onsubmit="return confirm('Are you sure you want to delete <?php echo htmlspecialchars($fileName); ?>?');">
+                <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($_SESSION['csrf_token']); ?>">
                 <input type="hidden" name="delete_file" value="<?php echo htmlspecialchars($fileName); ?>">
                 <button type="submit" class="delete-button">Delete</button>
               </form>

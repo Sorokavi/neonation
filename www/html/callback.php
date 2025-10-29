@@ -1,11 +1,10 @@
 <?php
-session_start();
-
+require_once __DIR__ . '/session_init.php';
 require_once 'load-env.php';
 
-$client_id     = $_ENV['DISCORD_CLIENT_ID'];
-$client_secret = $_ENV['DISCORD_CLIENT_SECRET'];
-$redirect_uri  = $_ENV['DISCORD_REDIRECT_URI'];
+$client_id     = env('DISCORD_CLIENT_ID');
+$client_secret = env('DISCORD_CLIENT_SECRET');
+$redirect_uri  = env('DISCORD_REDIRECT_URI');
 
 if (!isset($_GET['code'])) {
     die("No code provided by Discord.");
@@ -78,6 +77,9 @@ $guildsData = json_decode($guilds_response, true);
 if (!is_array($guildsData)) {
     die("Invalid guilds data response: " . htmlspecialchars($guilds_response));
 }
+
+// Prevent session fixation on successful authentication
+session_regenerate_id(true);
 
 $_SESSION['discord_user'] = [
     'id'       => $userData['id'],
