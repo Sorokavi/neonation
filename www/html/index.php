@@ -14,7 +14,7 @@
         }
     }
 
-    session_start();
+    require_once __DIR__ . '/session_init.php';
     
     require_once __DIR__ . '/Parsedown.php';
     $log = __DIR__ . '/../environments/guestbook.txt';
@@ -29,6 +29,9 @@
     }
 
     if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['guestbook_submit'], $_SESSION['discord_user'])) {
+        if (!isset($_POST['csrf_token']) || !hash_equals($_SESSION['csrf_token'] ?? '', (string)$_POST['csrf_token'])) {
+            $entryError = 'Invalid CSRF token.';
+        } else {
         $entry = trim($_POST['guestbook_entry']);
         if ($entry === '' || preg_match('/^\s*$/', str_replace(["\r", "\n"], '', $entry))) {
             $entryError = 'Entry cannot be empty or only whitespace!';
@@ -52,6 +55,7 @@
             }
             $entryError = 'Could not write to the guestbook.';
         }
+        }
     }
 
     $entrySuccess = '';
@@ -61,9 +65,11 @@
     }
     
     if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['signout'])) {
-        session_destroy();
-        header('Location: /');
-        exit;
+        if (isset($_POST['csrf_token']) && hash_equals($_SESSION['csrf_token'] ?? '', (string)$_POST['csrf_token'])) {
+            session_destroy();
+            header('Location: /');
+            exit;
+        }
     }
     ?>
 <!DOCTYPE html>
@@ -257,6 +263,7 @@
                 Welcome back, <strong><?php echo $_SESSION['discord_user']['username']; ?></strong>!
                 <form method="post" action="" style="display:inline; margin-left: 1em;">
                     <input type="hidden" name="signout" value="1">
+                    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($_SESSION['csrf_token']); ?>">
                     <button type="submit" class="header-button logout-button">Sign Out</button>
                 </form>
             </div>
@@ -370,6 +377,11 @@
 			<hr>
             <?php
                 $Parsedown = new Parsedown();
+                if (method_exists($Parsedown, 'setSafeMode')) {
+                    $Parsedown->setSafeMode(true);
+                } elseif (method_exists($Parsedown, 'setMarkupEscaped')) {
+                    $Parsedown->setMarkupEscaped(true);
+                }
                 if (file_exists($log) && is_readable($log)) {
                     $lines = file($log, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
                     if ($lines === false) {
@@ -405,6 +417,7 @@
         </div>
         <?php if (isset($_SESSION['discord_user'])): ?>
         <form method="post" action="" style="max-width: 600px; margin: 2em auto; background: #181818; border: 1px solid #39FF14; padding: 1em;">
+            <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($_SESSION['csrf_token']); ?>">
             <input type="hidden" name="guestbook_submit" value="1">
             <label for="guestbook_entry" style="display: block; margin-bottom: 0.5em;">Sign the Guestbook:</label>
             <p style="font-size: 0.9em;">Signed in as <strong><?php echo $_SESSION['discord_user']['username']; ?></strong></p>

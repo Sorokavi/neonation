@@ -534,6 +534,7 @@ $allEntries = load_manifest($manifestPath);
     <div class="user-info">
       Logged in as <strong><?php echo htmlspecialchars($currentUsername); ?></strong>
       <form method="post" action="/logout" style="display:inline; margin-left: 1em;">
+        <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($_SESSION['csrf_token']); ?>">
         <button type="submit" class="header-button logout-button">Sign Out</button>
       </form>
     </div>
